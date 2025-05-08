@@ -1,0 +1,51 @@
+name: CI/CD Python GCP Deployment
+
+on:
+  push:
+    branches:
+      - main  
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: site-safety
+      GCR_REPO: gcr.io/abhayrajgupta128/site-safety
+      IMAGE_TAG: v1
+      REGION: us-central1 
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Decode GCP service account key
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > gcp-key.json
+
+      - name: Authenticate with GCP and configure Docker
+        run: |
+          gcloud auth activate-service-account --key-file=gcp-key.json
+          gcloud config set project abhayrajgupta128
+          gcloud auth configure-docker
+
+      - name: Build and tag Docker image
+        run: |
+          docker build -t $IMAGE_NAME:latest .
+          docker tag $IMAGE_NAME:latest $GCR_REPO:$IMAGE_TAG
+
+      - name: Push Docker image to GCR
+        run: |
+          docker push $GCR_REPO:$IMAGE_TAG
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy site-safety \
+            --image $GCR_REPO:$IMAGE_TAG \
+            --platform managed \
+            --region $REGION \
+            --allow-unauthenticated \
+            --quiet
